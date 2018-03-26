@@ -63,15 +63,21 @@ html, body {
     <script>
 
 // This example uses the Google Maps JavaScript API's Data layer
-// to create a rectangular polygon with 2 holes in it.
 
 function initMap() {
+  // Initialize the map object. Required for displaying the map.
+  // If you want to search for a parish based on a location, you don't need
+  // a displayed map, but as far as I can tell, this initialization is still
+  // required, perhaps on a hidden element (?)
   var map = new google.maps.Map(document.getElementById('map'), {
     zoom: 15,
     center: {lat: 51.2159838, lng: 4.4025605},
   });
+  
+  // Initialize the geocoder object. Required for finding the location for an address
   var geocoder = new google.maps.Geocoder();
 
+  // Load the parish boundaries in a data layer. Automatically disaplayed.
   map.data.loadGeoJson('parish_boundaries.geojson');
 
   // Set click event for each feature and display parish name in info-box.
@@ -84,7 +90,6 @@ function initMap() {
   document.getElementById('submit').addEventListener('click', function() {
     geocodeAddress(geocoder, map);
   });
-
 }
 
 function geocodeAddress(geocoder, resultsMap) {
@@ -92,18 +97,24 @@ function geocodeAddress(geocoder, resultsMap) {
   geocoder.geocode({'address': address}, function(results, status) {
     if (status === 'OK') {
       var l = results[0].geometry.location;
+      // Draw a marker on the map (this is only for feedback to the user, not required
+      // for finding the parish)
       var marker = new google.maps.Marker({
         map: resultsMap,
         position: l
       });
+      // Iterate all polygons in the data layer to find which one contains the location
       resultsMap.data.forEach(function(feature) {
+        // Convert the geojson polygon into a maps polygon 
         var area = feature.getGeometry();
         var poly = new google.maps.Polygon({
           paths: area.getArray()[0].getAt(0).getArray(),
           map: resultsMap,
           clickable: false
         });
+        // Test if the location is inside the polygon
         if (google.maps.geometry.poly.containsLocation(l, poly)) {
+          // Display the parish name in the info-box
           document.getElementById('info-box').textContent =
               feature.getProperty('parish');
         }
@@ -113,7 +124,12 @@ function geocodeAddress(geocoder, resultsMap) {
     }
   });
 }
-
+// I have been looking into alternative approaches for finding a parish based on a location.
+// Because the data layer can identify very easily which polygon is clicked, I would think it
+// must be easy to get a similar functionaly from the API, to return a polygon when you give it
+// a location. But so far my searching hasn't been successful. I didn't come across a direct
+// API call. I also tried to trigger the click event on the entered location from code, but although
+// examples are available online, I couldn't get it to work.
 
     </script>
     <script async defer
