@@ -61,6 +61,13 @@ html, body {
       <input id="submit" type="button" value="Zoek parochie">
     </div>
     <script>
+// global variable containing the id of the selected parish
+var organisatie_id;
+
+// global variables referencing some utility objects
+var map;
+var geocoder;
+var array_of_polygons = [];
 
 // This example uses the Google Maps JavaScript API's Data layer
 
@@ -69,30 +76,57 @@ function initMap() {
   // If you want to search for a parish based on a location, you don't need
   // a displayed map, but as far as I can tell, this initialization is still
   // required, perhaps on a hidden element (?)
-  var map = new google.maps.Map(document.getElementById('map'), {
+  map = new google.maps.Map(document.getElementById('map'), {
     zoom: 15,
     center: {lat: 51.2159838, lng: 4.4025605},
   });
   
   // Initialize the geocoder object. Required for finding the location for an address
-  var geocoder = new google.maps.Geocoder();
+  geocoder = new google.maps.Geocoder();
 
-  // Load the parish boundaries in a data layer. Automatically disaplayed.
-  map.data.loadGeoJson('parish_boundaries.geojson');
-
-  // Set click event for each feature and display parish name in info-box.
-  map.data.addListener('click', function(event) {
-    document.getElementById('info-box').textContent =
-        event.feature.getProperty('parish');
-  });
+  // Load the parish boundaries, convert them to polygons, display them and add event handlers.
+  loadGeoJson_and_convert_to_polygons('parish_boundaries.geojson');
 
   // Set click event for "Zoek parochie" button and display marker on map and parish name in info-box
   document.getElementById('submit').addEventListener('click', function() {
-    geocodeAddress(geocoder, map);
+    geocodeAddress();
   });
 }
 
-function geocodeAddress(geocoder, resultsMap) {
+function loadGeoJson_and_convert_to_polygons(url) {
+  // loadGeoJson() will load and display polygons in the data layer, but these 'features' don't
+  // behave the same as native maps polygons, e.g. they have no containsLocation() method.
+  // The geojson data is loaded in a temporary data layer, converted to native polygons and
+  // then displayed on the map and provided with an event handler.
+  var bufferData = new google.maps.Data();
+  bufferData.loadGeoJson(
+    url, 
+    {idPropertyName: 'parish'},
+    function(featarr) {
+      // convert each feature to a polygon (assumes that geojson only contains polygons)
+      featarr.forEach(function(feat) {
+        var parish = feat.getProperty('parish');
+        var bufGeom = feat.getGeometry();
+        // create the polygon
+        myBuffer = new google.maps.Polygon({
+          paths: bufGeom.getArray()[0].getAt(0).getArray(),
+          map: map,
+          parish: parish,
+          fillColor: '#012345'
+        });
+        // Add the polygons to an array, that I want to iterate when querying locations
+        array_of_polygons.push(myBuffer);
+        // Set click event to display parish name in info-box and set the global variable.
+        google.maps.event.addListener(myBuffer, 'click', function(event){
+          var parish = this.parish;
+          document.getElementById('info-box').textContent = parish;
+          organisatie_id = parish;
+        });
+      });
+    });
+}
+
+function geocodeAddress() {
   var address = document.getElementById('address').value;
   geocoder.geocode({'address': address}, function(results, status) {
     if (status === 'OK') {
@@ -100,23 +134,22 @@ function geocodeAddress(geocoder, resultsMap) {
       // Draw a marker on the map (this is only for feedback to the user, not required
       // for finding the parish)
       var marker = new google.maps.Marker({
-        map: resultsMap,
+        map: map,
         position: l
       });
-      // Iterate all polygons in the data layer to find which one contains the location
-      resultsMap.data.forEach(function(feature) {
-        // Convert the geojson polygon into a maps polygon 
-        var area = feature.getGeometry();
-        var poly = new google.maps.Polygon({
-          paths: area.getArray()[0].getAt(0).getArray(),
-          map: resultsMap,
-          clickable: false
-        });
+      // Iterate all polygons to find which one contains the location
+      array_of_polygons.forEach(function(feature) {
         // Test if the location is inside the polygon
-        if (google.maps.geometry.poly.containsLocation(l, poly)) {
-          // Display the parish name in the info-box
-          document.getElementById('info-box').textContent =
-              feature.getProperty('parish');
+        if (google.maps.geometry.poly.containsLocation(l, feature)) {
+          // Display the parish name in the info-box and set the global variable 
+          var parish = feature.parish;
+          document.getElementById('info-box').textContent = parish;
+          organisatie_id = parish;
+          // Display an infowindow on the marker 
+          var infowindow = new google.maps.InfoWindow({
+            content: parish
+          });
+          infowindow.open(map, marker);
         }
       });
     } else {
