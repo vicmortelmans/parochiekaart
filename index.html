@@ -8,8 +8,6 @@
 body {
   font-family: 'Roboto','sans-serif';
 }
-      /* Always set the map height explicitly to define the size of the div
-       * element that contains the map. */
 #background {
   width: 100%;
   height: 100%;
@@ -29,10 +27,44 @@ body {
   left: 10px;
   z-index: 5;
   background-color: #fff;
-  padding: 5px;
+  padding: 20px;
   border: 1px solid #999;
   line-height: 30px;
-  padding-left: 10px;
+}
+#error {
+  color: darkgray;
+  display: none;
+}
+input#address {
+  text-align: left;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  font-weight: bold;
+  height: 38px;
+  width: 360px;
+  line-height: 1.75em;
+  color: #3e3e3e;
+  border: 1px solid #e0e0e0;
+  padding: 0 15px;
+  background: #FFF;
+  font-family: "Open Sans", sans-serif;
+}
+input#submit {
+  -webkit-border-radius: 0;
+  -webkit-font-smoothing: antialiased;
+  transition: all 0.2s ease-in-out;
+  background: #1a9a96;
+  color: #FFF;
+  display: inline-block;
+  outline: none;
+  border: none;
+  font-size: 13px;
+  font-weight: bold;
+  font-family: "Open Sans", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  padding: 13px 50px;
+  cursor: pointer;
 }
 
 /* Optional: Makes the sample page fill the window. */
@@ -48,14 +80,14 @@ html, body {
       <div id="map"></div>
     </div>
     <div id="floating-panel">
-      <form action="#">
-        <label>Adres:</label>
-        <input id="address" type="text" name="adres">
+      <form action="#" id="search">
+        <input id="address" type="text" name="adres" placeholder="Zoeken op adres">
         <input id="submit" type="submit" value="Zoek parochie">
       </form>
+      <p id="error">Geen resultaten gevonden</p>
     </div>
     <script>
-// global variable containing the id of the selected parish
+// global variable containing the id of the selected parish, for interfacing with kerknet
 var organisatie_id;
 
 // global variables referencing some utility objects
@@ -63,19 +95,15 @@ var map;
 var geocoder;
 var array_of_polygons = [];
 var infowindow;
-
-// This example uses the Google Maps JavaScript API's Data layer
+var marker;
 
 function initMap() {
   // Initialize the map object. Required for displaying the map.
-  // If you want to search for a parish based on a location, you don't need
-  // a displayed map, but as far as I can tell, this initialization is still
-  // required, perhaps on a hidden element (?)
   map = new google.maps.Map(document.getElementById('map'), {
-    zoom: 15,
-    center: {lat: 51.2159838, lng: 4.4025605},
+    zoom: 14,
+    center: {lat: 51.2189202, lng: 4.4087398},
   });
-  
+
   // Initialize the geocoder object. Required for finding the location for an address
   geocoder = new google.maps.Geocoder();
 
@@ -83,24 +111,25 @@ function initMap() {
   loadGeoJson_and_convert_to_polygons('parish_boundaries.geojson');
 
   // Set click event for "Zoek parochie" button and display marker on map 
-  document.getElementById('submit').addEventListener('click', function() {
+  document.getElementById('search').addEventListener('submit', function(event) {
+    event.preventDefault(); // no refresh
     geocodeAddress();
-    return false; // no refresh
   });
 }
 
 function loadGeoJson_and_convert_to_polygons(url) {
   // loadGeoJson() will load and display polygons in the data layer, but these 'features' don't
-  // behave the same as native maps polygons, e.g. they have no containsLocation() method.
+  // behave the same as native maps polygons, e.g. they cannot use containsLocation().
   // The geojson data is loaded in a temporary data layer, converted to native polygons and
   // then displayed on the map and provided with an event handler.
   var bufferData = new google.maps.Data();
   bufferData.loadGeoJson(
     url, 
-    {idPropertyName: 'parish'},
+    {idPropertyName: 'parish'}, // not needed?
     function(featarr) {
       // convert each feature to a polygon (assumes that geojson only contains polygons)
       featarr.forEach(function(feat) {
+        // read custom data attributes
         var parish = feat.getProperty('parish');
         var bufGeom = feat.getGeometry();
         // create the polygon with a random color
@@ -116,15 +145,19 @@ function loadGeoJson_and_convert_to_polygons(url) {
         });
         // Add the polygons to an array, that I want to iterate when querying locations
         array_of_polygons.push(myBuffer);
-        // Set click event to set the global variable.
+        // Set click event to display an infowindow and set the global variable.
         google.maps.event.addListener(myBuffer, 'click', function(event){
+          // reset the form
+          document.getElementById('error').style.display = 'none'; // hide
+          document.getElementById('address').value = ''; // empty search field
           // set the global variable 
-          var parish = this.parish;
-          organisatie_id = parish;
-          // Display an infowindow on the marker 
+          organisatie_id = this.parish;
+          // hide previous marker and infowindow
           if (infowindow) infowindow.close();
+          if (marker) marker.setMap(null); // hide marker
+          // Display an infowindow
           infowindow = new google.maps.InfoWindow();
-          infowindow.setContent(parish);
+          infowindow.setContent(this.parish);
           infowindow.setPosition(event.latLng);
           infowindow.open(map);
         });
@@ -133,33 +166,39 @@ function loadGeoJson_and_convert_to_polygons(url) {
 }
 
 function geocodeAddress() {
+  // hide error message
+  document.getElementById('error').style.display = 'none'; // hide
+  // find the address
   var address = document.getElementById('address').value;
   geocoder.geocode({'address': address}, function(results, status) {
     if (status === 'OK') {
       var l = results[0].geometry.location;
-      // Draw a marker on the map (this is only for feedback to the user, not required
-      // for finding the parish)
-      var marker = new google.maps.Marker({
+      // hide previous marker and infowindow
+      if (infowindow) infowindow.close(); // hide infowindow
+      if (marker) marker.setMap(null); // hide marker
+      // Draw a marker on the map 
+      marker = new google.maps.Marker({
         map: map,
         position: l
       });
       // Iterate all polygons to find which one contains the location
-      array_of_polygons.forEach(function(feature) {
+      if (!array_of_polygons.some(function(feature) {
         // Test if the location is inside the polygon
         if (google.maps.geometry.poly.containsLocation(l, feature)) {
           // set the global variable 
-          var parish = feature.parish;
-          organisatie_id = parish;
+          organisatie_id = feature.parish;
           // Display an infowindow on the marker 
-          if (infowindow) infowindow.close();
           infowindow = new google.maps.InfoWindow({
-            content: parish
+            content: feature.parish
           });
           infowindow.open(map, marker);
+          return true;
         }
-      });
+      })) {
+        document.getElementById('error').style.display = 'block'; // show
+      }
     } else {
-      alert('Geocode was not successful for the following reason: ' + status);
+      document.getElementById('error').style.display = 'block'; // show
     }
   });
 }
@@ -178,11 +217,8 @@ function strokeColor() {
 }
 
 function hslToRgb(h, s, l) {
-
   // https://gist.github.com/mjackson/5311256
-
   var r, g, b;
-
   if (s == 0) {
     r = g = b = l; // achromatic
   } else {
@@ -194,15 +230,12 @@ function hslToRgb(h, s, l) {
       if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
       return p;
     }
-
     var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
     var p = 2 * l - q;
-
     r = 255 * hue2rgb(p, q, h + 1/3);
     g = 255 * hue2rgb(p, q, h);
     b = 255 * hue2rgb(p, q, h - 1/3);
   }
-
   return '#' + ((1 << 24) + (r << 16) + (g << 8) + (b << 0)).toString(16).substr(1);
 }
 
