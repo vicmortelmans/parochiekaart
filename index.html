@@ -130,13 +130,16 @@ function loadGeoJson_and_convert_to_polygons(url) {
       // convert each feature to a polygon (assumes that geojson only contains polygons)
       featarr.forEach(function(feat) {
         // read custom data attributes
-        var parish = feat.getProperty('parish');
+        var parish = feat.getProperty('parish').split('#')[0];
+        var id = feat.getProperty('parish').split('#')[1]; // caution: id is local variable, organisatie_id is global!
         var bufGeom = feat.getGeometry();
+        console.log("converting" + bufGeom.getType());
         // create the polygon with a random color
         myBuffer = new google.maps.Polygon({
           paths: bufGeom.getArray()[0].getAt(0).getArray(),
           map: map,
           parish: parish,
+          organisatie_id: id,
           strokeColor: strokeColor(),
           strokeOpacity: 0.8,
           strokeWeight: 2,
@@ -151,7 +154,7 @@ function loadGeoJson_and_convert_to_polygons(url) {
           document.getElementById('error').style.display = 'none'; // hide
           document.getElementById('address').value = ''; // empty search field
           // set the global variable 
-          organisatie_id = this.parish;
+          organisatie_id = this.organisatie_id;
           // hide previous marker and infowindow
           if (infowindow) infowindow.close();
           if (marker) marker.setMap(null); // hide marker
@@ -186,7 +189,7 @@ function geocodeAddress() {
         // Test if the location is inside the polygon
         if (google.maps.geometry.poly.containsLocation(l, feature)) {
           // set the global variable 
-          organisatie_id = feature.parish;
+          organisatie_id = feature.organisatie_id;
           // Display an infowindow on the marker 
           infowindow = new google.maps.InfoWindow({
             content: feature.parish
